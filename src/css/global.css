@@ -1,0 +1,17 @@
+/* fonts */
+
+
+/* fira code */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code&display=swap');
+
+/* tailwind stuff */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* more font stuff */
+
+.fira-code {
+	font-family: 'Fira Code', monospace;
+}
