@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        margin: 0;
+      }
+
+      canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+    </style>
+    <title>Black hole</title>
+  </head>
+
+  <body>
+    <!-- <script src="./eruda.js"></script>
+    <script src="./loadEruda.js"></script>
+    <script src="./libraries/stats.js"></script> -->
+    <script>
+      const bounce = false;
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      document.body.appendChild(canvas);
+
+      // const stats = new Stats();
+      // document.body.appendChild(stats.dom);
+      // stats.dom.id = "stats";
+
+      /**
+       * @type {Body[]}
+       */
+      const bodies = [];
+
+      const kamera = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        zoom: 1,
+      };
+
+      let greatestMass = 0;
+
+      const gravitationalConstant = 10;
+
+      const accretion = true;
+
+      const maxVelocity = 40;
+
+      class Body {
+        constructor({
+          x = 0,
+          y = 0,
+          pinned = false,
+          color = "black",
+          mass = 1,
+          radius,
+          vx = 0,
+          vy = 0,
+        }) {
+          this.x = x;
+          this.y = y;
+          this.pinned = pinned;
+          this.color = color;
+          this.mass = mass;
+          this._radius = radius;
+
+          this.vx = vx;
+          this.vy = vy;
+
+          this.bodiesChecked = [];
+        }
+
+        get radius() {
+          return this._radius || Math.sqrt(this.mass) / 1.5;
+        }
+        set radius(radius) {
+          this._radius = radius;
+          return radius;
+        }
+
+        update() {
+          // if (this.mass === greatestMass && performance.now() < 1000) this.pinned = true;
+          // else this.pinned = false;
+
+          const loopStart = false ? bodies.indexOf(this) : 0;
+
+          for (let i = loopStart; i < bodies.length; i += 1) {
+            const body = bodies[i];
+            if (body === this) continue;
+
+            // if (body.bodiesChecked.includes(this)) return;
+            let distance = Math.sqrt((this.x - body.x) ** 2 + (this.y - body.y) ** 2);
+            if (distance <= this.radius + body.radius && accretion) {
+              if (!body.pinned) {
+                this.mass += body.mass;
+                this.vx =
+                  (this.vx * this.mass + body.vx * body.mass) / (this.mass + body.mass);
+                this.vy =
+                  (this.vy * this.mass + body.vy * body.mass) / (this.mass + body.mass);
+                const idx = bodies.indexOf(body);
+                bodies.splice(idx, 1);
+              } else {
+                // same thing but with the other body
+                body.mass += this.mass;
+                body.vx =
+                  (body.vx * body.mass + this.vx * this.mass) / (body.mass + this.mass);
+                body.vy =
+                  (body.vy * body.mass + this.vy * this.mass) / (body.mass + this.mass);
+                const idx = bodies.indexOf(this);
+                bodies.splice(idx, 1);
+                return;
+              }
+            } else {
+              const force =
+                (gravitationalConstant * body.mass) / Math.max(distance ** 2, 5000);
+              this.vx += (force * (body.x - this.x)) / distance;
+              this.vy += (force * (body.y - this.y)) / distance;
+            }
+
+            this.bodiesChecked.push(body);
+          }
+
+          if (bounce) {
+            if (
+              this.x - this.radius / 2 <= 0 ||
+              this.x + this.radius / 2 >= canvas.width
+            ) {
+              this.vx *= -1;
+            }
+
+            if (
+              this.y - this.radius / 2 <= 0 ||
+              this.y + this.radius / 2 >= canvas.height
+            ) {
+              this.vy *= -1;
+            }
+          }
+        }
+
+        move() {
+          this.bodiesChecked = [];
+          if (this.pinned) {
+            // this.vx = this.vy = 0;
+            return;
+          }
+
+          this.vx = Math.min(Math.max(-maxVelocity, this.vx), maxVelocity);
+          this.vy = Math.min(Math.max(-maxVelocity, this.vy), maxVelocity);
+
+          this.x += this.vx;
+          this.y += this.vy;
+        }
+
+        render() {
+          ctx.beginPath();
+          ctx.fillStyle = this.color;
+
+          ctx.arc(this.x, this.y, Math.max(this.radius, 0), 0, Math.PI * 2);
+
+          ctx.fill();
+        }
+      }
+
+      const render = () => {
+        // stats.begin();
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(
+          -kamera.x + window.innerWidth / 2,
+          -kamera.y + window.innerHeight / 2
+        );
+        ctx.scale(kamera.zoom, kamera.zoom);
+        // ctx.translate(kamera.x - window.innerWidth / 2, kamera.y - window.innerHeight / 2);
+
+        // if (addingBody) {
+        //   ctx.beginPath();
+        //   ctx.strokeStyle = "red";
+        //   ctx.lineWidth = 5;
+
+        //   ctx.moveTo(newBodyPos.x, newBodyPos.y);
+        //   ctx.lineTo(velPos.x, velPos.y);
+
+        //   ctx.stroke();
+        // }
+
+        greatestMass = bodies.reduce((a, b) => (a.mass < b.mass ? b : a)).mass;
+
+        bodies.forEach((body) => body.update());
+        bodies.forEach((body) => body.move());
+        bodies.forEach((body) => body.render());
+
+        // stats.end();
+
+        ctx.restore();
+
+        const totalMomentum = {
+          x: Math.round(
+            bodies.map((body) => body.mass * body.vx).reduce((a, b) => a + b)
+          ),
+          y: Math.round(
+            bodies.map((body) => body.mass * body.vy).reduce((a, b) => a + b)
+          ),
+        };
+
+        ctx.font = "50px Arial";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText("x: " + totalMomentum.x.toString(), 10, 100);
+        ctx.fillText("y: " + totalMomentum.y.toString(), 10, 175);
+
+        requestAnimationFrame(render);
+      };
+
+      const amount = parseInt(location.hash.length > 1 ? location.hash.slice(1) : "1000");
+
+      const vel = 13;
+
+      // average mass of an asteroid is 3e15 kg
+      const real = {
+        asteroid: {
+          mass: 3e15,
+          radius: 50,
+          num: 1.5e6,
+        },
+        sun: {
+          mass: 2e30,
+          radius: 7e8,
+        },
+        size: 4.5e12,
+      };
+      const scalling = real.size / Math.min(window.innerWidth, window.innerHeight);
+      const simAsteroids = amount;
+      const sim = {
+        asteroid: {
+          mass: ((real.asteroid.mass / scalling) * real.asteroid.num) / simAsteroids,
+          radius: ((real.asteroid.radius / scalling) * real.asteroid.num) / simAsteroids,
+        },
+        sun: {
+          mass: real.sun.mass / scalling,
+          radius: real.sun.radius / scalling,
+        },
+        size: real.size / scalling,
+      };
+
+      const star = new Body({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        pinned: true,
+        color: "red",
+        mass: 2000,
+        radius: 10,
+      });
+
+      bodies.push(star);
+
+      // average radius of asteroid is 50m
+      // mass of sun is 2e30 kg
+      // radius of sun is 7e8m
+      // mass of all non sun material is .135% of total mass or about 2e30*.00135 = 2.7e27 kg
+      // number of asteroids = 1.5e6
+      // simulated asteroids is 1e3
+      // simulated asteroid size compared to real asteroid size is 1.5e6 / 1e3 =1500 times larger
+      // simulation scalling is 1e3 times smaller
+      // simulated asteroid mass is 1.5e15 kg
+
+      const generateParticles = ({
+        num = simAsteroids,
+        center = { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+        minDistance = 0,
+        maxDistance = Math.min(window.innerHeight, window.innerWidth) / 2,
+        distanceWeight = 1,
+        minMass = 1,
+        maxMass = 2,
+        minVel = vel,
+        maxVel = vel,
+      } = {}) => {
+        for (let i = 0; i < num / 2; i++) {
+          let angle = Math.random() * Math.PI * 2;
+          const distance =
+            Math.random() ** distanceWeight * (maxDistance - minDistance) + minDistance;
+          const velocity = Math.random() * (maxVel - minVel) + minVel;
+          const mass = Math.random() * (maxMass - minMass) + minMass;
+          bodies.push(
+            new Body({
+              x: Math.cos(angle) * distance + center.x,
+              y: Math.sin(angle) * distance + center.y,
+              color: "black",
+              mass: mass,
+              vx:
+                Math.cos(angle + Math.PI / 2) *
+                velocity *
+                Math.min((distance / maxDistance) * 2, 1),
+              vy:
+                Math.sin(angle + Math.PI / 2) *
+                velocity *
+                Math.min((distance / maxDistance) * 2, 1),
+            })
+          );
+
+          angle += Math.PI;
+
+          bodies.push(
+            new Body({
+              x: Math.cos(angle) * distance + center.x,
+              y: Math.sin(angle) * distance + center.y,
+              color: "black",
+              mass: mass,
+              vx:
+                Math.cos(angle + Math.PI / 2) *
+                velocity *
+                Math.min((distance / maxDistance) * 2, 1),
+              vy:
+                Math.sin(angle + Math.PI / 2) *
+                velocity *
+                Math.min((distance / maxDistance) * 2, 1),
+            })
+          );
+        }
+
+        console.log(bodies.map((body) => body.vx).reduce((a, b) => a + b));
+      };
+
+      generateParticles({ num: amount });
+
+      let dragging = false;
+
+      const mousePos = { x: 0, y: 0 };
+
+      canvas.addEventListener("mousedown", ({ clientX, clientY }) => {
+        dragging = true;
+        mousePos.x = clientX;
+        mousePos.y = clientY;
+      });
+
+      window.addEventListener(
+        "mousemove",
+        ({ movementX, movementY, clientX, clientY }) => {
+          if (dragging) {
+            kamera.x -= movementX;
+            kamera.y -= movementY;
+          }
+
+          mousePos.x = clientX;
+          mousePos.y = clientY;
+        }
+      );
+
+      window.addEventListener("mouseup", ({ clientX, clientY }) => {
+        dragging = false;
+      });
+
+      window.addEventListener("wheel", ({ deltaY }) => {
+        return;
+        const reduction = 200;
+        kamera.zoom -= deltaY / reduction;
+
+        console.log(mousePos);
+        kamera.x +=
+          ((mousePos.x - (kamera.x - window.innerWidth / 2)) * deltaY) / reduction;
+        kamera.y +=
+          ((mousePos.y - (kamera.y - window.innerHeight / 2)) * deltaY) / reduction;
+      });
+
+      window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      requestAnimationFrame(render);
+    </script>
+  </body>
+</html>
